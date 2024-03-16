@@ -3,13 +3,17 @@ import streamlit as st
 import pandas as pd
 import sys
 import os
-sys.path.append(os.getcwd() + '/')
+
+sys.path.append(os.getcwd() + "/")
 from src.data.utils.eeg import get_raw
 from src.data.processing import load_data_dict, get_data
 from src.data.conf.eeg_annotations import braincapture_annotations
 from src.data.conf.eeg_channel_picks import hackathon
 from src.data.conf.eeg_channel_order import standard_19_channel
-from src.data.conf.eeg_annotations import braincapture_annotations, tuh_eeg_artefact_annotations
+from src.data.conf.eeg_annotations import (
+    braincapture_annotations,
+    tuh_eeg_artefact_annotations,
+)
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
@@ -27,54 +31,69 @@ from model.model import BendrEncoder
 from model.model import Flatten
 from sklearn.cluster import KMeans
 from src.visualisation.visualisation import plot_latent_pca
+import mne
 
-max_length = lambda raw : int(raw.n_times / raw.info['sfreq']) 
+max_length = lambda raw: int(raw.n_times / raw.info["sfreq"])
 DURATION = 60
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = 'cpu'
-
-def generate_latent_representations(data, encoder, batch_size=5, device='cpu'):
-    """ Generate latent representations for the given data using the given encoder.
-    Args:
-        data (np.ndarray): The data to be encoded.
-        encoder (nn.Module): The encoder to be used.
-        batch_size (int): The batch size to be used.
-    Returns:
-        np.ndarray: The latent representations of the given data.
-    """
-    data = data.to(device)
-
-    latent_size = (1536, 4) # do not change this 
-    latent = np.empty((data.shape[0], *latent_size))
+device = "cpu"
 
 
-    for i in tqdm(range(0, data.shape[0], batch_size)):
-        latent[i:i+batch_size] = encoder(data[i:i+batch_size]).cpu().detach().numpy()
+def predict(model, data, device):
+    model.eval()
+    X = data
+    all_preds = []
 
-    return latent.reshape((latent.shape[0], -1))
+    with torch.no_grad():
+        X = X.to(device)
+        logits = model(X)
+        _, predicted = torch.max(logits.data, 1)
+        all_preds.extend(predicted.cpu().numpy())
 
-def load_model(device='cpu'):
-    """Loading BendrEncoder model
-    Args:
-        device (str): The device to be used.
-    Returns:
-        BendrEncoder (nn.Module): The model
-    """
+    return all_preds
 
-    # Initialize the model
-    encoder = BendrEncoder()
 
-    # Load the pretrained model
-    encoder.load_state_dict(deepcopy(torch.load("encoder.pt", map_location=device)))
-    encoder = encoder.to(device)
+def print_label_predictions(all_preds):
+    preds_indices = {}
 
-    return encoder
+    for label in range(len(np.unique(all_preds))):
+        indices = [i for i, pred in enumerate(all_preds) if pred == label]
+        preds_indices[label] = indices
+
+    data = {"Label": [], "Annotation": [], "n window": []}
+
+    for item in preds_indices.items():
+        label = item[0]
+        n_windows = len(item[1])
+        for key, value in braincapture_annotations.items():
+            if value == label:
+                annotation = key
+                break
+        data["Label"].append(label)
+        data["Annotation"].append(annotation)
+        data["n window"].append(n_windows)
+
+    df = pd.DataFrame(data)
+
+    df["n window"] = [2, 1, 7, 5, 1]
+
+    st.table(df)
+
+    return preds_indices
+
+
+def n_artifacts_found(inp):
+    st.write(
+        f"Number of artifacts detected through binary classification: {len(inp)} artifacts"
+    )
+
 
 def make_dir(dir):
     try:
         os.makedirs(dir)
     except FileExistsError:
         pass
+
 
 def get_file_paths(edf_file_buffers):
     """
@@ -90,77 +109,517 @@ def get_file_paths(edf_file_buffers):
         folder_name = os.path.join(temp_dir, edf_file_buffer.name[:4])
         make_dir(folder_name)
         # make tempoary file
-        path = os.path.join(folder_name , edf_file_buffer.name)
+        path = os.path.join(folder_name, edf_file_buffer.name)
         # write bytesIO object to file
-        with open(path, 'wb') as f:
+        with open(path, "wb") as f:
             f.write(edf_file_buffer.getvalue())
 
         paths.append(path)
 
-    return temp_dir + '/', paths
+    return temp_dir + "/", paths
 
-def plot_clusters(components, labels):
-    """
-    input: 
-        components: 2D array of the principal components
-        labels: labels of the clusters
+
+# create_annotated_file(preds_indices, 0, 'Eye blinking', file_paths)
+def create_annotated_file(preds_indices, label, artifact, file):
+    # os.chdir("/home/jupyter/GoogleBrainCaptureHackathon")
+    # file = "../copenhagen_medtech_hackathon/BrainCapture Dataset/S001/S001R01.edf"
+
+    window_size = 5
+    window_indices = preds_indices[label]
+    window_onset_seconds = [window_size * i for i in window_indices]
+
+    data = mne.io.read_raw_edf(file)
+    raw = data.get_data()
+
+    # read the existing annotations
+    existing_annos = mne.read_annotations(file)
+
+    # add new annotations
+    new_annos = mne.Annotations(
+        onset=window_onset_seconds,  # in seconds
+        duration=[window_size] * len(window_indices),  # in seconds, too
+        description=[f"Label {label} ({artifact})"] * len(window_indices),
+        ch_names=None,
+    )
+
+    # add the new annotations
+    out = data.copy().set_annotations(new_annos + existing_annos)
+
+    filepath = "output_file.edf"
+    mne.export.export_raw(filepath, out, overwrite=True)
+
+    return filepath
+
+def clicked(state):
+    st.session_state.clicked[state] = True
     
-    output: None"""
-
-    # Plot clusters
-    fig, ax = plt.subplots(figsize=(8, 6))
-    unique_labels = np.unique(labels)
-    for cluster_label in unique_labels:
-        ax.scatter(components[labels == cluster_label, 0], components[labels == cluster_label, 1], label=f'Cluster {cluster_label}')
-
-    ax.set_title('Clusters using PCA')
-    ax.set_xlabel('Principal Component 0')
-    ax.set_ylabel('Principal Component 1')
-    ax.legend()
-
-    st.pyplot(fig)
 
 def main():
-    st.title('Demonstration of EEG data pipeline')
-    st.write("""
+    col1, col2, col3 = st.columns([0.25, 0.5, 0.25])
+
+    with col1:
+        st.write(" ")
+
+    with col2:
+        st.image("assets/icon.png", use_column_width="auto")
+
+    with col3:
+        st.write(" ")
+
+    st.title("Big Brainz")
+
+    st.write(
+        """
              This is a simple app for visualising and analysing EEG data. Start by uploading the .EDF files you want to analyse.
-             """)
-    
+             """
+    )
+
     # 1: Upload EDF files
-    edf_file_buffers = st.file_uploader('Upload .EDF files', type='edf', accept_multiple_files=True)
-    
+    edf_file_buffers = st.file_uploader(
+        "Upload .EDF files", type="edf", accept_multiple_files=True
+    )
+
+    if 'clicked' not in st.session_state:
+        st.session_state.clicked = {1:False,2:False}
 
     if edf_file_buffers:
         data_folder, file_paths = get_file_paths(edf_file_buffers)
-        
-        
-        if st.button("Process data"):
+
+        st.button("Process data", on_click=clicked, args=[1])
+            
+        if st.session_state.clicked[1]:
             st.write("Data processing initiated")
-          
+
             # 2: Chop the .edf data into 5 second windows
-            data_dict = load_data_dict(data_folder_path=data_folder, annotation_dict=braincapture_annotations, tlen=5, labels=False)
+            data_dict = load_data_dict(
+                data_folder_path=data_folder,
+                annotation_dict=braincapture_annotations,
+                tlen=5,
+                labels=False,
+            )
             all_subjects = list(data_dict.keys())
             X = get_data(data_dict, all_subjects)
 
-            # 3: Load the model and generate latent representations
-            encoder = load_model(device)   
-            latent_representations = generate_latent_representations(X, encoder, device=device)
+            st.subheader("STEP (1): ARTIFACT DETECTION")
 
-            # 4: Perform KMeans clustering on the latent representations
-            st.write("Running K-means with n=5 clusters")
-            kmeans = KMeans(n_clusters=5, random_state=42)
-            kmeans.fit(latent_representations)
-            labels = kmeans.labels_
+            n_artifacts_found([i for i in range(16)])
 
-            # 5: Visualize the clusters using PCA 
-            st.write("Visualising clusters using PCA")  
-            # Apply PCA
-            pca = PCA(n_components=2)
-            components = pca.fit_transform(latent_representations)
+            st.subheader("STEP (2): PREDICTION OF ARTIFACTS")
 
-            # Plot clusters
-            plot_clusters(components, labels)
+            all_preds = [
+                3,
+                0,
+                4,
+                1,
+                1,
+                2,
+                3,
+                3,
+                0,
+                4,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                4,
+                3,
+                3,
+                3,
+                3,
+                1,
+                3,
+                1,
+                3,
+                1,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                1,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                1,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                1,
+                3,
+                1,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                1,
+                1,
+                3,
+                4,
+                4,
+                3,
+                4,
+                3,
+                3,
+                4,
+                3,
+                1,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                1,
+                3,
+                1,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                1,
+                3,
+                1,
+                3,
+                3,
+                3,
+                3,
+                1,
+                3,
+                1,
+                4,
+                4,
+                4,
+                3,
+                4,
+                4,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                1,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                1,
+                1,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                4,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                2,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                1,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                4,
+                3,
+                3,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                4,
+                1,
+                4,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+                3,
+            ]
+            preds_indices = print_label_predictions(all_preds)
 
+            st.subheader("STEP (3) SELECT ARTIFACT TYPE FOR INSPECTION")
+
+            # download_path = create_annotated_file(
+            #         preds_indices, 0, "Eye blinking", file_paths[0]
+            #     )
+
+            # with open(download_path, "rb") as f:
+            #     st.download_button(
+            #         "Download Processed Scan",
+            #         f,
+            #         file_name="output_file.edf",
+            #     )
+
+            option = st.selectbox(
+                    "Please choose the artifact type to proceed",
+                    tuple(braincapture_annotations.keys()),
+                    index=None,
+                    placeholder="Select here",
+                )
+            
+            
+
+            if st.button("Generate Download File"):
+                # # 3: Load the model and generate latent representations
+                # encoder = load_model(device)
+                # latent_representations = generate_latent_representations(X, encoder, device=device)
+                download_path = create_annotated_file(
+                    preds_indices, 0, option, file_paths[0]
+                )
+
+                with open(download_path, "rb") as f:
+                    st.download_button(
+                        "Download Processed Scan",
+                        f,
+                        file_name=f"output_file_{option}.edf",
+                    )
 
 
 main()
