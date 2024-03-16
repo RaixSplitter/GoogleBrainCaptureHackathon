@@ -1,0 +1,40 @@
+# See: https://cloud.google.com/build/docs/deploying-builds/deploy-cloud-run
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'europe-west1-docker.pkg.dev/medtech-hack24cop-4042/container-app-imagez/app:latest', '.']
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'europe-west1-docker.pkg.dev/medtech-hack24cop-4042/container-app-imagez/app:latest']
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+    - 'run'
+    - 'deploy'
+    - 'big-brainz-app-service'
+    - '--image'
+    - 'europe-west1-docker.pkg.dev/medtech-hack24cop-4042/container-app-imagez/app:latest'
+    - '--region'
+    - 'europe-west1'
+    - '--memory'
+    - '2Gi'
+    - '--cpu'
+    - '2'
+  # Mount storage bucket to cloud run instance
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+    - 'beta'
+    - 'run'
+    - 'services'
+    - 'update'
+    - 'big-brainz-app-service'
+    - '--execution-environment'
+    - 'gen2'
+    - '--add-volume'
+    - 'name=weights-volume,type=cloud-storage,bucket=big-bucketz'
+    - '--add-volume-mount'
+    - 'volume=weights-volume,mount-path=/bucket'
+    - '--region'
+    - 'europe-west1'
