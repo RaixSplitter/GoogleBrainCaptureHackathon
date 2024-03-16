@@ -131,11 +131,11 @@ def main():
 
             # 3: Do binary predictions
             binary_model = create_binary_model()
-            binary_model.load_state_dict("/bucket/big-bucketz/best_binary_model.pt")
-            
+            binary_model.load_state_dict(torch.load("/bucket/big-bucketz/best_binary_model.pt"))
+
             # 4: Do multi class predictions
             class_model = create_classification_model()
-            class_model.load_state_dict("/bucket/big-bucketz/best_classification_model.pt")
+            class_model.load_state_dict(torch.load("/bucket/big-bucketz/best_classification_model.pt"))
 
 
 
