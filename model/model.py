@@ -2,8 +2,6 @@ from typing import Tuple
 import torch
 import numpy as np
 from torch import Tensor, nn
-from math import ceil
-from copy import deepcopy
 
 def _make_span_from_seeds(seeds: np.ndarray, span: int, total: None | int = None) -> np.ndarray:
     inds = list()

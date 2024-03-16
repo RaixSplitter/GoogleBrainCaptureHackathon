@@ -1,4 +1,5 @@
-
+# TODO: Please not this step is trivially skipped (see line 27: "if: 1 == 2") 
+# This is the case since we cant get a service account with sufficient permissions during this project.
 name: Push Docker Image to GCP
 
 on:
@@ -8,7 +9,7 @@ on:
     branches: [ main ]
 
 env:
-  PROJECT_ID: medtech-hack24cop-4042 # TODO: Should (probably) be secret, but project closes automatically in two days soooo...
+  PROJECT_ID: medtech-hack24cop-4042 # TODO: Should (probably) be secret, but there were mixed answers for what to do
   GAR_LOCATION: europe-west1
   REGION: europe-west1
   APP: app
