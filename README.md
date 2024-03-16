@@ -10,6 +10,9 @@
                 |  $$$$$$/                                                     
                 \______/                                                      
 
+Visit the deployed application at: https://big-brainz-app-service-k75rrke6ya-ew.a.run.app
+**Note**: PLEASE note it takes roughly 20 min for the docker image to build, so the newest updates to the repo are not reflected in the deployed application (yet)
+
 This repo contains the code our group developed during 15.-16. march for the Google x Copenhagen Medtech x BrainCapture hackathon. The goal with our implementation is to create a tool to aid neurologists(?) (people who look at EEG scans) with their daily work. This tool takes a ```.edf``` file and applies two small neural networks to find and classify activities within the scan (Eye blinking, Eye movement left-right, Eyes closed, Eyes opened, Jaw clenching). The resulting activities are annotated into the ```.edf``` file, and a copy is returned to the user. 
 
 ### Main features
