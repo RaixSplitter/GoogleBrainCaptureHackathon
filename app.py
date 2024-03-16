@@ -107,8 +107,8 @@ def main():
             # 2: Chop the .edf data into 5 second windows
             data_dict = load_data_dict(data_folder_path=data_folder, annotation_dict=braincapture_annotations, tlen=5, labels=False)
             all_subjects = list(data_dict.keys())
-            X = get_data(data_dict, all_subjects)
-
+            X, _ = get_data(data_dict, all_subjects)
+            
             # 3: Do binary predictions
             binary_model = create_binary_model()
             binary_model.load_state_dict(torch.load("/bucket/big-bucketz/best_binary_model.pt"))
