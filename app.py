@@ -202,11 +202,13 @@ def main():
 
             st.subheader("STEP (1): ARTIFACT DETECTION")
 
-            n_artifacts_found([i for i in range(16)])
+            artifact_pred = fun...
+
+            n_artifacts_found(artifact_pred)
 
             st.subheader("STEP (2): PREDICTION OF ARTIFACTS")
 
-            all_preds = None #Model Instance
+            all_preds = fun... #Model Instance
 
             preds_indices = print_label_predictions(all_preds)
 
