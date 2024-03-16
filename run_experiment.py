@@ -28,7 +28,7 @@ model = Baseline
 
 cfg = {
     "tqdm_disabled" : False,
-    "epoch" : 3,
+    "epoch" : 30,
     "k_folds" : 5,
     "batch_size" : 64
 }

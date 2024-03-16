@@ -169,8 +169,12 @@ def kfold_validation(X, y, model, encoder, cfg):
         
         for key, value in train_stats.items():
             stats[key][-1].append(value)
+            
+        
         
         accuracies.append(accuracy)
+        
+    stats["test_acc"] = accuracies
     
     return accuracies, stats
     
