@@ -3,34 +3,55 @@ from sklearn.model_selection import KFold, train_test_split
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
+from tqdm import tqdm
+from torch import nn
 
-from baseline_classifier import Baseline
+    
 
 
-def train(train_dataloader, validation_dataloader, test_dataloader, model, epochs, criterion, optimizer, device): 
+def train(train_dataloader, validation_dataloader, test_dataloader, model, criterion, optimizer, device, cfg): 
     running_train_loss = 0
     validation_loss = 0
-    
+    test_accuracy = 0
+    train_val_accuracies = []
+    epochs = cfg["epoch"]
     model.to(device)
     
-    for epoch in range(epochs):
+    stats = {
+        "train_loss" : [],
+        "avg_train_loss" : [],
+        "val_loss" : [],
+        "val_acc" : [],
+    }
+    
+    pbar = tqdm(range(epochs), disable = cfg["tqdm_disabled"])
+    for epoch in pbar:
+        stats["train_loss"].append([])
+            
         #Train
         model.train()
+        
         for batch_idx, (X, y) in enumerate(train_dataloader):
 
             optimizer.zero_grad()
 
             # Forward pass, then backward pass, then update weights
-            preds = model(X)
-            preds = preds.argmax(dim=1)
+            propabilities = model(X)
+            preds = propabilities.argmax(dim=1)
             
 
-            loss = criterion(preds, y)
+            loss = criterion(propabilities, y)
             loss.backward()
             train_loss = loss.item()
+            
+            
+            
             running_train_loss += train_loss
 
             optimizer.step()
+            
+            #Train loss
+            stats["train_loss"][-1].append(train_loss)
     
         #Validate
         model.eval()
@@ -40,24 +61,37 @@ def train(train_dataloader, validation_dataloader, test_dataloader, model, epoch
             total_samples = 0
             for batch_idx, (X, y) in enumerate(validation_dataloader):                
 
-                preds = model(X)
-                # Preds are probabilities, so we take the class with the highest probability
-                preds = preds.argmax(dim=1)
-                loss = criterion(preds, y)
+                propabilities = model(X)
+                preds = propabilities.argmax(dim=1)
+                loss = criterion(propabilities, y)
                 validation_loss += loss
 
-                correct_predictions += torch.sum(preds.argmax(dim=1) == y).item()
+                correct_predictions += torch.sum(preds == y).item()
                 total_samples += len(y)
 
-        accuracy = correct_predictions / total_samples
+        train_val_acc = correct_predictions / total_samples
+        train_val_accuracies.append(train_val_acc)
+        avg_loss = running_train_loss / (epoch + 1)
+        avg_acc = np.mean(train_val_accuracies)
+        pbar.set_description(f"Epoch: {epoch+1}/{epochs} avg trainingloss : {avg_loss}, avg_val_acc : {avg_acc}")
         
-        print(accuracy)
+        
+        
+        
+        #Avg Train loss
+        stats["avg_train_loss"].append(avg_loss)
+        #Val loss
+        stats["val_loss"].append(validation_loss)
+        
+        #Val accuracy
+        stats["val_acc"].append(train_val_acc)
+        
+        
     
     
     
     #Test
     model.eval()
-    
     y_true = np.array([])
     y_pred = np.array([])
     
@@ -66,33 +100,42 @@ def train(train_dataloader, validation_dataloader, test_dataloader, model, epoch
         total_samples = 0
         for batch_idx, (X, y) in enumerate(test_dataloader):                
 
-            preds = model(X)
-            preds = preds.argmax(dim=1)
+            propabilities = model(X)
+            preds = propabilities.argmax(dim=1)
             
             y_true = np.concatenate((y_true, y))
-            try:
-                
-                y_pred = np.concatenate((y_pred, preds))
-            except ValueError:
-                print(preds.shape)
-                print(y_pred.shape)
-                print(y_pred)
-                print(preds) 
-                raise ValueError("Error in concatenating predictions.")               
+
+            y_pred = np.concatenate((y_pred, preds))
+                       
             
-    accuracy = accuracy_score(y_pred, y_true)
+    test_accuracy = accuracy_score(y_pred, y_true)
     
-    return accuracy
+    
+    
+    print(f"test_acc : {test_accuracy}")
+    
+    return test_accuracy, stats
 
 
-def kfold_validation(X, y, model, epochs, criterion, optimizer, device, k_folds : int = 5, batch_size : int = 64):
+def kfold_validation(X, y, model, encoder, cfg):
     
-    kf = KFold(n_splits=k_folds, shuffle=True, random_state=0)
+    kf = KFold(n_splits=cfg["k_folds"], shuffle=True, random_state=0)
     
     accuracies = []
     
+    stats = {
+        "train_loss" : [],
+        "avg_train_loss" : [],
+        "val_loss" : [],
+        "val_acc" : [],
+    }
+    
+    
     for fold, (train_idx, test_idx) in enumerate(kf.split(X)):
-        print(train_idx.shape)
+        for value in stats.values():
+            value.append([])
+        
+        
         train_idx, val_idx = train_test_split(train_idx, train_size=0.8, random_state=0, shuffle=True)
 
         
@@ -101,41 +144,37 @@ def kfold_validation(X, y, model, epochs, criterion, optimizer, device, k_folds 
         # Define the data loaders for the current fold
         train_dataloader = DataLoader(
             dataset=dataset,
-            batch_size=batch_size,
+            batch_size=cfg["batch_size"],
             sampler=torch.utils.data.SubsetRandomSampler(train_idx),
         )
         
         validation_dataloader = DataLoader(
             dataset=dataset,
-            batch_size=batch_size,
+            batch_size=cfg["batch_size"],
             sampler=torch.utils.data.SubsetRandomSampler(val_idx),
         )
         
         test_dataloader = DataLoader(
             dataset=dataset,
-            batch_size=batch_size,
+            batch_size=cfg["batch_size"],
             sampler=torch.utils.data.SubsetRandomSampler(test_idx),
         )
         
-        accuracy = train(train_dataloader, validation_dataloader, test_dataloader, model, epochs, criterion, optimizer, device)
-
+        model_instance = model(in_features=4 * 1536, n_classes=5, encoder=encoder)
+        criterion = torch.nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(model_instance.parameters())
+        device = torch.device("cpu")
+        
+        accuracy, train_stats = train(train_dataloader, validation_dataloader, test_dataloader, model_instance, criterion, optimizer, device, cfg)
+        
+        for key, value in train_stats.items():
+            stats[key][-1].append(value)
+        
         accuracies.append(accuracy)
+    
+    return accuracies, stats
+    
     
     
             
-    
-
-if __name__ == "__main__":
-    print("Train module.")
-    
-    X = torch.rand(133, 1536, 4)
-    y = torch.randint(low=0, high=5, size=(133, ))
-    model = Baseline(in_features=4 * 1536, n_classes=5)
-    
-    print(X.shape)
-    print(y.shape)
-    
-    
-    
-    kfold_validation(X, y, model, 10, torch.nn.CrossEntropyLoss(), torch.optim.Adam(model.parameters()), torch.device("cpu"))
     
