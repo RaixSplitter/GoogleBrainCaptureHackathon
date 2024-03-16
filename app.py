@@ -88,26 +88,6 @@ def get_file_paths(edf_file_buffers):
 
     return temp_dir + '/', paths
 
-def plot_clusters(components, labels):
-    """
-    input: 
-        components: 2D array of the principal components
-        labels: labels of the clusters
-    
-    output: None"""
-
-    # Plot clusters
-    fig, ax = plt.subplots(figsize=(8, 6))
-    unique_labels = np.unique(labels)
-    for cluster_label in unique_labels:
-        ax.scatter(components[labels == cluster_label, 0], components[labels == cluster_label, 1], label=f'Cluster {cluster_label}')
-
-    ax.set_title('Clusters using PCA')
-    ax.set_xlabel('Principal Component 0')
-    ax.set_ylabel('Principal Component 1')
-    ax.legend()
-
-    st.pyplot(fig)
 
 def main():
     st.title('Demonstration of EEG data pipeline')
@@ -132,11 +112,26 @@ def main():
             # 3: Do binary predictions
             binary_model = create_binary_model()
             binary_model.load_state_dict(torch.load("/bucket/big-bucketz/best_binary_model.pt"))
+            binary_model.eval()
+
+            # binary predictions
+            with torch.no_grad():
+                logits = binary_model(X)
+            _, preds = torch.max(logits.data, 1)
+
+            X = X[0 < preds] # filter away the entries where the binary predictor found nothing abnormal
 
             # 4: Do multi class predictions
             class_model = create_classification_model()
             class_model.load_state_dict(torch.load("/bucket/big-bucketz/best_classification_model.pt"))
+            class_model.eval()
 
+            with torch.no_grad():
+                logits = class_model(X)
+            _, preds = torch.max(logits.data, 1)
+            all_preds = []
+            all_preds.extend(preds.cpu().numpy())
 
+            st.write(all_preds)
 
 main()
