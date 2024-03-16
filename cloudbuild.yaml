@@ -36,3 +36,5 @@ steps:
     - 'name=weights-volume,type=cloud-storage,bucket=big-bucketz'
     - '--add-volume-mount'
     - 'volume=weights-volume,mount-path=/'
+    - '--region'
+    - 'europe-west1'
