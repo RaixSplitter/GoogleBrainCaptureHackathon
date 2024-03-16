@@ -1,3 +1,25 @@
+    /$$       /$$           /$$                          /$$                    
+    | $$      |__/          | $$                         |__/                    
+    | $$$$$$$  /$$  /$$$$$$ | $$$$$$$   /$$$$$$  /$$$$$$  /$$ /$$$$$$$  /$$$$$$$$
+    | $$__  $$| $$ /$$__  $$| $$__  $$ /$$__  $$|____  $$| $$| $$__  $$|____ /$$/
+    | $$  \ $$| $$| $$  \ $$| $$  \ $$| $$  \__/ /$$$$$$$| $$| $$  \ $$   /$$$$/ 
+    | $$  | $$| $$| $$  | $$| $$  | $$| $$      /$$__  $$| $$| $$  | $$  /$$__/  
+    | $$$$$$$/| $$|  $$$$$$$| $$$$$$$/| $$     |  $$$$$$$| $$| $$  | $$ /$$$$$$$$
+    |_______/ |__/ \____  $$|_______/ |__/      \_______/|__/|__/  |__/|________/
+                /$$  \ $$                                                     
+                |  $$$$$$/                                                     
+                \______/                                                      
+
+This repo contains the code our group developed during 15.-16. march for the Google x Copenhagen Medtech x BrainCapture hackathon. The goal with our implementation is to create a tool to aid neurologists(?) (people who look at EEG scans) with their daily work. This tool takes a ```.edf``` file and applies two small neural networks to find and classify activities within the scan (Eye blinking, Eye movement left-right, Eyes closed, Eyes opened, Jaw clenching). The resulting activities are annotated into the ```.edf``` file, and a copy is returned to the user. 
+
+### Main features
+- Github Actions for testing docker image before deployment
+- Fully automatic cloud deployment pipeline triggered by successful PR to main-branch (Cloud build -> Artifact registry -> Cloud run)
+- ANN Model for detecting anomalies in a EEG scan, followed by another ANN that classifies the anomaly into a class.
+- Annotations are automatically added to the original scan and returned in the same format, easily viewed in [EDFbrowser](https://www.teuniz.net/edfbrowser/) or the like.
+- Webpage for interactive use available at https://big-brainz-app-service-k75rrke6ya-ew.a.run.app, or run locally with ```make run_local_app```.
+
+
 # Copenhagen Medtech x Google Cloud x BrainCapture Hackathon
 
 <img src="assets/logos/cm_logo.png" width="30%"> <img src="assets/logos/gcp_logo.png" width="30%"> <img src="/assets/logos/bc_logo.png" width="30%">
