@@ -15,19 +15,21 @@ class Baseline(nn.Module):
         model (nn.Module): a PyTorch model
     """
 
-    def __init__(self, in_features: int = 1, n_classes: int = 2) -> None:
+    def __init__(self, in_features:int, n_classes: int, encoder) -> None:
         """
         A small network for doing classification   
         The architecture of the network is adapted from: https://www.kaggle.com/code/lightyagami26/mnist-sign-language-cnn-99-40-accuracy
         """
         super(Baseline, self).__init__()
-
+        self.in_features = in_features
         self.n_classes = n_classes
 
         self.prep_block = nn.Sequential(
             nn.Flatten() # out: 4 * 1536
         )
         self.dense_block = nn.Sequential(
+            encoder,
+            nn.Flatten(),
             nn.Linear(in_features=in_features, out_features=512*4),
             nn.Dropout(p=0.4, inplace=False),
             nn.BatchNorm1d(512 * 4),
@@ -38,8 +40,6 @@ class Baseline(nn.Module):
 
     def forward(self, x) -> torch.Tensor:
         """ Forward pass """
-        
-        x = self.prep_block(x)
         x = self.dense_block(x)
         return x
     
