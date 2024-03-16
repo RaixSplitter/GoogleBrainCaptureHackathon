@@ -7,9 +7,7 @@ import sys
 import os
 sys.path.append(os.getcwd() + '/')
 from src.data.processing import load_data_dict, get_data
-from src.data.conf.eeg_annotations import braincapture_annotations
-from src.data.conf.eeg_annotations import braincapture_annotations
-import matplotlib.pyplot as plt
+from src.data.conf.eeg_annotations import braincapture_annotations, braincapture_annotations_inv
 import numpy as np
 import tempfile
 import torch
@@ -111,7 +109,7 @@ def main():
             
             # 3: Do binary predictions
             binary_model = create_binary_model()
-            binary_model.load_state_dict(torch.load("/bucket/big-bucketz/best_binary_model.pt"))
+            binary_model.load_state_dict(torch.load("best_binary_model.pt"))
             binary_model.eval()
 
             # binary predictions
@@ -119,11 +117,12 @@ def main():
                 logits = binary_model(X)
             _, preds = torch.max(logits.data, 1)
 
+            st.write(X.shape)
             X = X[0 < preds] # filter away the entries where the binary predictor found nothing abnormal
-
+            st.write(X.shape)
             # 4: Do multi class predictions
             class_model = create_classification_model()
-            class_model.load_state_dict(torch.load("/bucket/big-bucketz/best_classification_model.pt"))
+            class_model.load_state_dict(torch.load("best_classification_model.pt"))
             class_model.eval()
 
             with torch.no_grad():
