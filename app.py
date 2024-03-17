@@ -198,32 +198,40 @@ def main():
                 labels=False,
             )
             all_subjects = list(data_dict.keys())
-            X = get_data(data_dict, all_subjects)
+            X, _ = get_data(data_dict, all_subjects)
 
             st.subheader("STEP (1): ARTIFACT DETECTION")
 
-            artifact_pred = fun...
+            # 3: Do binary predictions
+            binary_model = create_binary_model()
+            binary_model.load_state_dict(torch.load("/bucket/big-bucketz/best_binary_model.pt"))
+            binary_model.eval()
 
-            n_artifacts_found(artifact_pred)
+            # binary predictions
+            with torch.no_grad():
+                logits = binary_model(X)
+            _, preds = torch.max(logits.data, 1)
+
+            X = X[0 < preds] # filter away the entries where the binary predictor found nothing abnormal
+
+            n_artifacts_found(len(X))
 
             st.subheader("STEP (2): PREDICTION OF ARTIFACTS")
 
-            all_preds = fun... #Model Instance
+            # 4: Do multi class predictions
+            class_model = create_classification_model()
+            class_model.load_state_dict(torch.load("/bucket/big-bucketz/best_classification_model.pt"))
+            class_model.eval()
+
+            with torch.no_grad():
+                logits = class_model(X)
+            _, preds = torch.max(logits.data, 1)
+            all_preds = []
+            all_preds.extend(preds.cpu().numpy())
 
             preds_indices = print_label_predictions(all_preds)
 
             st.subheader("STEP (3) SELECT ARTIFACT TYPE FOR INSPECTION")
-
-            # download_path = create_annotated_file(
-            #         preds_indices, 0, "Eye blinking", file_paths[0]
-            #     )
-
-            # with open(download_path, "rb") as f:
-            #     st.download_button(
-            #         "Download Processed Scan",
-            #         f,
-            #         file_name="output_file.edf",
-            #     )
 
             option = st.selectbox(
                     "Please choose the artifact type to proceed",
