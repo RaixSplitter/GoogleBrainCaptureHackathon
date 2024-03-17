@@ -12,3 +12,5 @@ scipy
 pyedflib
 google # try google.cloud
 streamlit
+
+EDFlib-Python
